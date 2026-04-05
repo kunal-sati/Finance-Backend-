@@ -17,7 +17,7 @@ app.include_router(dashboard.router)
 # Root
 @app.get("/")
 def root():
-    return {"message": "Finance Backend Running 🚀"}
+    return {"message": "Finance Backend Running successfully!"}
 
 # Global Error Handler
 @app.exception_handler(Exception)
