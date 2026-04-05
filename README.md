@@ -3,7 +3,7 @@ FastAPI backend for finance records with role-based access control, dashboard an
 
 ## Features
 - User management with roles (`viewer`, `analyst`, `admin`) and active/inactive status.
-- JWT authentication (`/auth/register`, `/auth/login`, `/auth/me`).
+- JWT authentication with refresh support (`/auth/register`, `/auth/login`, `/auth/refresh`, `/auth/me`).
 - Admin user management APIs (`/users`).
 - Financial records CRUD with filters by type, category, date range, and text search (`/records`).
 - Soft delete for records (deleted records are excluded from reads and dashboard analytics).
@@ -42,6 +42,9 @@ FastAPI backend for finance records with role-based access control, dashboard an
    - `http://localhost:8000/docs`
 
 ## Running tests
+- Create and activate a virtual environment:
+  - `python -m venv .venv`
+  - `source .venv/bin/activate`
 - Install dependencies:
   - `pip install -r requirements.txt`
 - Run:
@@ -53,20 +56,25 @@ FastAPI backend for finance records with role-based access control, dashboard an
    - First registered user is auto-assigned `admin`.
 2. Login:
    - `POST /auth/login`
-   - Returns `access_token`.
+   - Returns `access_token` and `refresh_token`.
 3. Use token:
    - `Authorization: Bearer <token>`
+4. Refresh tokens:
+   - `POST /auth/refresh`
+   - Returns a fresh access/refresh token pair.
 
 ## Key endpoints
 - Auth:
   - `POST /auth/register`
   - `POST /auth/login`
+  - `POST /auth/refresh`
   - `GET /auth/me`
 - Users (admin):
   - `POST /users`
   - `GET /users`
   - `GET /users/{user_id}`
   - `PATCH /users/{user_id}`
+  - `PATCH /users/{user_id}/disable`
 - Records:
   - `POST /records` (admin)
   - `GET /records` (admin, analyst) with filters:

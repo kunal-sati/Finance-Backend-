@@ -23,11 +23,10 @@ router = APIRouter(prefix="/records", tags=["Records"])
 def create_record_endpoint(
     payload: RecordCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(UserRole.ADMIN)),
-    _: None = Depends(limit_requests(bucket="records_write", limit=60, window_seconds=60)),
+    _: User = Depends(require_roles(UserRole.ADMIN)),
+    __: None = Depends(limit_requests(bucket="records_write", limit=60, window_seconds=60)),
 ):
-    owner_user_id = payload.user_id or current_user.id
-    return create_record(db, payload, owner_user_id)
+    return create_record(db, payload, payload.user_id)
 
 
 @router.get("/", response_model=list[RecordOut])
@@ -77,6 +76,11 @@ def update_record_endpoint(
     _: User = Depends(require_roles(UserRole.ADMIN)),
     __: None = Depends(limit_requests(bucket="records_write", limit=60, window_seconds=60)),
 ):
+    if payload.record_id != record_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="record_id in body must match the route parameter",
+        )
     record = get_record_or_404(db, record_id)
     return update_record(db, record, payload)
 

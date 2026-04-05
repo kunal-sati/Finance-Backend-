@@ -82,20 +82,12 @@ def get_record_or_404(db: Session, record_id: int) -> Record:
 
 
 def update_record(db: Session, record: Record, payload: RecordUpdate) -> Record:
-    updates = payload.model_dump(exclude_unset=True)
+    updates = payload.model_dump(exclude={"record_id"}, exclude_unset=True)
     if not updates:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No update fields provided",
         )
-    new_user_id = updates.get("user_id")
-    if new_user_id is not None:
-        owner = db.query(User.id).filter(User.id == new_user_id).first()
-        if not owner:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Owner user not found for provided user_id",
-            )
 
 
     for field, value in updates.items():

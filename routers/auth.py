@@ -5,11 +5,29 @@ from database import get_db
 from middleware.auth import get_current_user
 from middleware.rate_limit import limit_requests
 from models.user import User, UserRole
-from schemas.auth import LoginRequest, TokenResponse
+from schemas.auth import LoginRequest, RefreshTokenRequest, TokenResponse
 from schemas.user import UserOut, UserRegister
-from services.auth_service import authenticate_user, create_access_token, create_user
+from services.auth_service import (
+    authenticate_user,
+    create_access_token,
+    create_refresh_token,
+    decode_refresh_token,
+)
+from services.user_service import create_user, get_user_by_id
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
+
+
+def build_token_response(user: User) -> TokenResponse:
+    token_payload = {
+        "user_id": user.id,
+        "email": user.email,
+        "role": user.role.value,
+    }
+    return TokenResponse(
+        access_token=create_access_token(token_payload),
+        refresh_token=create_refresh_token(token_payload),
+    )
 
 
 @router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
@@ -47,15 +65,34 @@ def login(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Inactive user account",
         )
+    return build_token_response(user)
 
-    token = create_access_token(
-        {
-            "user_id": user.id,
-            "email": user.email,
-            "role": user.role.value,
-        }
-    )
-    return TokenResponse(access_token=token)
+
+@router.post("/refresh", response_model=TokenResponse)
+def refresh_token(
+    payload: RefreshTokenRequest,
+    db: Session = Depends(get_db),
+):
+    token_payload = decode_refresh_token(payload.refresh_token)
+    user_id = token_payload.get("user_id")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication token",
+        )
+
+    user = get_user_by_id(db, int(user_id))
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found for token",
+        )
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Inactive user account",
+        )
+    return build_token_response(user)
 
 
 @router.get("/me", response_model=UserOut)

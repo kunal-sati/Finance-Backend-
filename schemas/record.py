@@ -5,22 +5,25 @@ from pydantic import BaseModel, Field
 from models.record import RecordType
 
 
-class RecordCreate(BaseModel):
+class RecordBase(BaseModel):
     amount: float = Field(gt=0, description="Amount must be greater than 0")
     type: RecordType
     category: str = Field(min_length=1, max_length=64)
     date: dt_date
     description: str | None = Field(default=None, max_length=500)
-    user_id: int | None = Field(default=None, gt=0)
 
 
-class RecordUpdate(BaseModel):
+class RecordCreate(RecordBase):
+    user_id: int = Field(gt=0)
+
+
+class RecordUpdate(RecordBase):
+    record_id: int = Field(gt=0)
     amount: float | None = Field(default=None, gt=0)
     type: RecordType | None = None
     category: str | None = Field(default=None, min_length=1, max_length=64)
     date: dt_date | None = None
     description: str | None = Field(default=None, max_length=500)
-    user_id: int | None = Field(default=None, gt=0)
 
 
 class RecordOut(BaseModel):

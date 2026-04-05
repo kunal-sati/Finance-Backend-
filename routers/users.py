@@ -6,7 +6,7 @@ from middleware.auth import require_roles
 from middleware.rate_limit import limit_requests
 from models.user import User, UserRole
 from schemas.user import UserCreate, UserOut, UserUpdate
-from services.auth_service import count_active_admins, create_user, get_user_by_id, update_user
+from services.user_service import count_active_admins, create_user, disable_user, get_user_by_id, update_user
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
@@ -82,3 +82,23 @@ def update_user_endpoint(
         )
 
     return update_user(db, target_user, updates)
+
+
+@router.patch("/{user_id}/disable", response_model=UserOut)
+def disable_user_endpoint(
+    user_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_roles(UserRole.ADMIN)),
+    __: None = Depends(limit_requests(bucket="users_write", limit=30, window_seconds=60)),
+):
+    target_user = get_user_by_id(db, user_id)
+    if not target_user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    if target_user.role == UserRole.ADMIN and target_user.is_active and count_active_admins(db) <= 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one active admin must remain",
+        )
+
+    return disable_user(db, target_user)

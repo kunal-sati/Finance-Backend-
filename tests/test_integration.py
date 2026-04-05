@@ -12,6 +12,13 @@ def login_user(client, email: str, password: str = "Password@123"):
     )
 
 
+def refresh_tokens(client, refresh_token: str):
+    return client.post(
+        "/auth/refresh",
+        json={"refresh_token": refresh_token},
+    )
+
+
 def auth_headers(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
@@ -19,12 +26,12 @@ def auth_headers(token: str) -> dict[str, str]:
 def create_admin_and_token(client):
     register_user(client, "admin@example.com")
     login_resp = login_user(client, "admin@example.com")
-    token = login_resp.json()["access_token"]
-    return token
+    payload = login_resp.json()
+    return payload["access_token"], payload["refresh_token"]
 
 
 def test_role_based_access_control(client):
-    admin_token = create_admin_and_token(client)
+    admin_token, _ = create_admin_and_token(client)
 
     create_analyst = client.post(
         "/users/",
@@ -50,6 +57,7 @@ def test_role_based_access_control(client):
             "category": "Salary",
             "date": "2026-04-01",
             "description": "monthly salary",
+            "user_id": 1,
         },
     )
     assert forbidden_create.status_code == 403
@@ -77,7 +85,7 @@ def test_role_based_access_control(client):
 
 
 def test_search_soft_delete_and_dashboard_exclusion(client):
-    admin_token = create_admin_and_token(client)
+    admin_token, _ = create_admin_and_token(client)
     headers = auth_headers(admin_token)
 
     first_record = client.post(
@@ -89,6 +97,7 @@ def test_search_soft_delete_and_dashboard_exclusion(client):
             "category": "Salary",
             "date": "2026-04-01",
             "description": "April salary payout",
+            "user_id": 1,
         },
     )
     assert first_record.status_code == 201
@@ -102,6 +111,7 @@ def test_search_soft_delete_and_dashboard_exclusion(client):
             "category": "Groceries",
             "date": "2026-04-02",
             "description": "Supermarket purchase",
+            "user_id": 1,
         },
     )
     assert second_record.status_code == 201
@@ -129,6 +139,107 @@ def test_search_soft_delete_and_dashboard_exclusion(client):
     assert summary["total_income"] == 1000.0
     assert summary["total_expenses"] == 0.0
     assert summary["net_balance"] == 1000.0
+
+
+def test_record_create_uses_requested_user_id(client):
+    admin_token, _ = create_admin_and_token(client)
+    headers = auth_headers(admin_token)
+
+    create_user_resp = client.post(
+        "/users/",
+        headers=headers,
+        json={
+            "email": "other@example.com",
+            "password": "Password@123",
+            "role": "viewer",
+            "is_active": True,
+        },
+    )
+    assert create_user_resp.status_code == 201
+    other_user_id = create_user_resp.json()["id"]
+
+    create_record_resp = client.post(
+        "/records/",
+        headers=headers,
+        json={
+            "amount": 350,
+            "type": "income",
+            "category": "Bonus",
+            "date": "2026-04-03",
+            "description": "Quarterly bonus",
+            "user_id": other_user_id,
+        },
+    )
+    assert create_record_resp.status_code == 201
+    created_record = create_record_resp.json()
+    assert created_record["user_id"] == other_user_id
+
+
+def test_record_update_requires_matching_record_id(client):
+    admin_token, _ = create_admin_and_token(client)
+    headers = auth_headers(admin_token)
+
+    create_record_resp = client.post(
+        "/records/",
+        headers=headers,
+        json={
+            "amount": 350,
+            "type": "income",
+            "category": "Bonus",
+            "date": "2026-04-03",
+            "description": "Quarterly bonus",
+            "user_id": 1,
+        },
+    )
+    assert create_record_resp.status_code == 201
+    record_id = create_record_resp.json()["id"]
+
+    update_resp = client.patch(
+        f"/records/{record_id}",
+        headers=headers,
+        json={
+            "record_id": record_id + 1,
+            "description": "Updated bonus",
+        },
+    )
+    assert update_resp.status_code == 400
+
+
+def test_refresh_token_issues_new_tokens(client):
+    _, refresh_token = create_admin_and_token(client)
+
+    refresh_resp = refresh_tokens(client, refresh_token)
+
+    assert refresh_resp.status_code == 200
+    payload = refresh_resp.json()
+    assert payload["access_token"]
+    assert payload["refresh_token"]
+    assert payload["token_type"] == "bearer"
+
+
+def test_disable_user_prevents_login(client):
+    admin_token, _ = create_admin_and_token(client)
+    headers = auth_headers(admin_token)
+
+    create_viewer_resp = client.post(
+        "/users/",
+        headers=headers,
+        json={
+            "email": "disabled@example.com",
+            "password": "Password@123",
+            "role": "viewer",
+            "is_active": True,
+        },
+    )
+    assert create_viewer_resp.status_code == 201
+    viewer_id = create_viewer_resp.json()["id"]
+
+    disable_resp = client.patch(f"/users/{viewer_id}/disable", headers=headers)
+    assert disable_resp.status_code == 200
+    assert disable_resp.json()["is_active"] is False
+
+    login_resp = login_user(client, "disabled@example.com")
+    assert login_resp.status_code == 403
 
 
 def test_login_rate_limiting(client):

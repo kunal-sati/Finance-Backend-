@@ -7,7 +7,8 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from models.user import User, UserRole
-from services.auth_service import decode_access_token, get_user_by_id
+from services.auth_service import decode_access_token
+from services.user_service import get_user_by_id
 
 load_dotenv()
 
